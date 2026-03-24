@@ -1,5 +1,5 @@
 // Package wechatbot provides a Go SDK for the Weixin iLink Bot API.
-package wxbot
+package wechatbot
 
 import (
 	"bytes"
@@ -253,6 +253,8 @@ func (c *WeChatBot) GetUploadURL(req *GetUploadURLReq) (resp *GetUploadURLResp, 
 // ErrNoContextToken is returned by Push when no cached context token exists for the user.
 var ErrNoContextToken = fmt.Errorf("no cached context token for this user; user must send a message first")
 
+type MessageHandler func(message *Message)
+
 // Start runs a long-poll loop, calling the handler for each inbound message.
 // Blocks until ctx is cancelled. Handles retries and backoff automatically.
 func (c *WeChatBot) Start(ctx context.Context, onMessage MessageHandler) error {
@@ -267,49 +269,16 @@ func (c *WeChatBot) Start(ctx context.Context, onMessage MessageHandler) error {
 			return err
 		}
 		c.UpdatesBuf = resp.GetUpdatesBuf
-		for _, msg := range resp.Messages {
-			onMessage(&ReplyMessage{
-				WeChatBot: c,
-				Message:   &msg,
-			})
+		for _, message := range resp.Messages {
+			onMessage(&message)
 		}
 	}
 }
 
-type MessageHandler func(message *ReplyMessage)
-
-type ReplyMessage struct {
-	*WeChatBot
-	*Message
-}
-
-func (r *ReplyMessage) Typing(status TypingStatus) (err error) {
-	resp, err := r.GetConfig(r.ContextToken, r.FromUserID)
-	if err != nil {
-		return
-	}
-	err = r.SendTyping(resp.TypingTicket, r.FromUserID, status)
-	return
-}
-
-func (r *ReplyMessage) Reply(items ...MessageItem) (*SendMessageResp, error) {
-	message := NewMessage(r.ContextToken, r.FromUserID, items...)
-	return r.SendMessage(message)
-}
-
-func (r *ReplyMessage) ReplyText(content string) (*SendMessageResp, error) {
-	return r.Reply(MessageItem{
-		Type: MessageItemText,
-		TextItem: &TextItem{
-			Text: content,
-		},
-	})
-}
-
 // SendImage uploads and sends an image message.
 // imageData is the raw image bytes, fileName is the image filename.
-func (c *WeChatBot) SendImage(contextToken, toUserID string, imageData []byte, fileName string) (*SendMessageResp, error) {
-	uploadResult, err := c.UploadFile(MediaImage, toUserID, imageData, fileName, true)
+func (c *WeChatBot) SendImage(contextToken, toUserID string, fileName string, imageData []byte) (*SendMessageResp, error) {
+	uploadResult, err := c.UploadFile(MediaImage, toUserID, fileName, imageData, true)
 	if err != nil {
 		return nil, fmt.Errorf("upload image: %w", err)
 	}
@@ -325,8 +294,8 @@ func (c *WeChatBot) SendImage(contextToken, toUserID string, imageData []byte, f
 
 // SendFile uploads and sends a file message.
 // fileData is the raw file bytes, fileName is the file filename.
-func (c *WeChatBot) SendFile(contextToken, toUserID string, fileData []byte, fileName string) (*SendMessageResp, error) {
-	uploadResult, err := c.UploadFile(MediaFile, toUserID, fileData, fileName, true)
+func (c *WeChatBot) SendFile(contextToken, toUserID string, fileName string, fileData []byte) (*SendMessageResp, error) {
+	uploadResult, err := c.UploadFile(MediaFile, toUserID, fileName, fileData, true)
 	if err != nil {
 		return nil, fmt.Errorf("upload file: %w", err)
 	}
@@ -347,7 +316,7 @@ func (c *WeChatBot) SendFile(contextToken, toUserID string, fileData []byte, fil
 // thumbData can be nil to skip thumbnail.
 func (c *WeChatBot) SendVideo(contextToken, toUserID string, videoData []byte, fileName string, thumbData []byte) (*SendMessageResp, error) {
 	// Upload main video
-	uploadResult, err := c.UploadFile(MediaVideo, toUserID, videoData, fileName, thumbData == nil)
+	uploadResult, err := c.UploadFile(MediaVideo, toUserID, fileName, videoData, thumbData == nil)
 	if err != nil {
 		return nil, fmt.Errorf("upload video: %w", err)
 	}
@@ -357,10 +326,9 @@ func (c *WeChatBot) SendVideo(contextToken, toUserID string, videoData []byte, f
 		PlayLength: 0, // Unknown without parsing video
 		VideoMD5:   fmt.Sprintf("%x", md5Sum(videoData)),
 	}
-
 	// Upload thumbnail if provided
 	if thumbData != nil {
-		thumbResult, err := c.UploadFile(MediaVideo, toUserID, thumbData, "thumb_"+fileName, true)
+		thumbResult, err := c.UploadFile(MediaVideo, toUserID, "thumb_"+fileName, thumbData, true)
 		if err != nil {
 			return nil, fmt.Errorf("upload video thumbnail: %w", err)
 		}
@@ -372,19 +340,4 @@ func (c *WeChatBot) SendVideo(contextToken, toUserID string, videoData []byte, f
 		VideoItem: videoItem,
 	})
 	return c.SendMessage(message)
-}
-
-// ReplyImage uploads and sends an image message as a reply.
-func (r *ReplyMessage) ReplyImage(imageData []byte, fileName string) (*SendMessageResp, error) {
-	return r.WeChatBot.SendImage(r.ContextToken, r.FromUserID, imageData, fileName)
-}
-
-// ReplyFile uploads and sends a file message as a reply.
-func (r *ReplyMessage) ReplyFile(fileData []byte, fileName string) (*SendMessageResp, error) {
-	return r.WeChatBot.SendFile(r.ContextToken, r.FromUserID, fileData, fileName)
-}
-
-// ReplyVideo uploads and sends a video message as a reply.
-func (r *ReplyMessage) ReplyVideo(videoData []byte, fileName string, thumbData []byte) (*SendMessageResp, error) {
-	return r.WeChatBot.SendVideo(r.ContextToken, r.FromUserID, videoData, fileName, thumbData)
 }

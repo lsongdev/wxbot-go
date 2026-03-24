@@ -1,3 +1,3 @@
-module github.com/lsongdev/wxbot-go
+module github.com/lsongdev/wechatbot-go
 
 go 1.22.3

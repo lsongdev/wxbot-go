@@ -1,4 +1,4 @@
-package wxbot
+package wechatbot
 
 import (
 	"bytes"
@@ -11,6 +11,18 @@ import (
 	"io"
 	"net/http"
 )
+
+// md5Sum calculates MD5 hash of data
+func md5Sum(data []byte) []byte {
+	h := md5.New()
+	h.Write(data)
+	return h.Sum(nil)
+}
+
+// calcCipherSize calculates the ciphertext size after AES-128-ECB encryption with PKCS7 padding.
+func calcCipherSize(rawSize int64) int64 {
+	return int64((int(rawSize) + 1) / 16 * 16)
+}
 
 // pkcs7Pad adds PKCS7 padding to plaintext for AES encryption.
 func pkcs7Pad(data []byte, blockSize int) []byte {
@@ -107,9 +119,8 @@ func parseAESKey(aesKey string) ([]byte, error) {
 	return nil, fmt.Errorf("invalid AES key length: expected 16 bytes, got %d", len(decoded))
 }
 
-// calcCipherSize calculates the ciphertext size after AES-128-ECB encryption with PKCS7 padding.
-func calcCipherSize(rawSize int64) int64 {
-	return int64((int(rawSize) + 1) / 16 * 16)
+func (c *WeChatBot) DownloadMedia(media *CDNMedia) ([]byte, error) {
+	return c.DownloadFile(media.EncryptQueryParam, media.AESKey)
 }
 
 // DownloadFile downloads and decrypts a file from the CDN.
@@ -154,7 +165,7 @@ func (c *WeChatBot) DownloadFile(encryptQueryParam string, aesKey string) ([]byt
 // mediaType: 1=IMAGE, 2=VIDEO, 3=FILE, 4=VOICE
 // toUserID: the target user ID
 // noNeedThumb: if true, skip thumbnail upload
-func (c *WeChatBot) UploadFile(mediaType UploadMediaType, toUserID string, fileData []byte, fileName string, noNeedThumb bool) (*UploadFileResult, error) {
+func (c *WeChatBot) UploadFile(mediaType UploadMediaType, toUserID string, fileName string, fileData []byte, noNeedThumb bool) (*UploadFileResult, error) {
 	// Generate random filekey and aeskey
 	fileKey := make([]byte, 16)
 	if _, err := rand.Read(fileKey); err != nil {
@@ -237,11 +248,4 @@ func (c *WeChatBot) UploadFile(mediaType UploadMediaType, toUserID string, fileD
 		FileSize: fileSize,
 		RawSize:  rawSize,
 	}, nil
-}
-
-// md5Sum calculates MD5 hash of data
-func md5Sum(data []byte) []byte {
-	h := md5.New()
-	h.Write(data)
-	return h.Sum(nil)
 }

@@ -1,4 +1,4 @@
-package wxbot
+package wechatbot
 
 import (
 	"encoding/json"
