@@ -2,12 +2,16 @@ package wxbot
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 )
 
 // Config holds the bot configuration.
 type Config struct {
 	path string `json:"-"`
+
+	BaseURL    string `json:"base_url"`
+	CDNBaseURL string `json:"cdn_base_url"`
 	// Token is the bot token for authentication.
 	// Empty for login-only usage; will be auto-updated after LoginWithQR.
 	Token string `json:"token"`
@@ -65,6 +69,20 @@ type GetUploadURLReq struct {
 type GetUploadURLResp struct {
 	UploadParam      string `json:"upload_param,omitempty"`
 	ThumbUploadParam string `json:"thumb_upload_param,omitempty"`
+}
+
+// --- CDN Download/Upload ---
+
+// DownloadFileReq represents a CDN download request.
+type DownloadFileReq struct {
+	EncryptQueryParam string `json:"encrypt_query_param"`
+}
+
+// UploadFileResult holds the result after uploading a file to CDN.
+type UploadFileResult struct {
+	*CDNMedia
+	FileSize int64 `json:"file_size"` // ciphertext size
+	RawSize  int64 `json:"raw_size"`  // plaintext size
 }
 
 // --- Message types ---
@@ -190,8 +208,23 @@ type Message struct {
 	ContextToken string        `json:"context_token,omitempty"`
 }
 
-func (m *Message) Text() string {
-	return ExtractText(m)
+// ExtractText is a helper to extract the first text body from a message's item list.
+func (msg *Message) Text() string {
+	for _, item := range msg.ItemList {
+		if item.Type == MessageItemText && item.TextItem != nil {
+			return item.TextItem.Text
+		}
+	}
+	return ""
+}
+
+func (msg *Message) Image() *ImageItem {
+	for _, item := range msg.ItemList {
+		if item.Type == MessageItemImage && item.ImageItem != nil {
+			return item.ImageItem
+		}
+	}
+	return nil
 }
 
 // --- GetUpdates ---
@@ -201,15 +234,20 @@ type GetUpdatesReq struct {
 	BaseInfo      *BaseInfo `json:"base_info,omitempty"`
 }
 
-type BaseResponse struct {
+type WeChatBotError struct {
 	ErrCode int    `json:"errcode,omitempty"`
 	ErrMsg  string `json:"errmsg,omitempty"`
 }
 
+// Error implements [error].
+func (b WeChatBotError) Error() string {
+	return fmt.Sprintf("Error (%d): %s", b.ErrCode, b.ErrMsg)
+}
+
 type GetUpdatesResp struct {
-	*BaseResponse
+	*WeChatBotError
 	Messages      []Message `json:"msgs,omitempty"`
-	SyncBuf       string    `json:"sync_buf"`
+	SyncBuf       string    `json:"sync_buf"` // deprecated, use "get_updates_buf" instead.
 	GetUpdatesBuf string    `json:"get_updates_buf,omitempty"`
 }
 
